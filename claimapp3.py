@@ -1,8 +1,5 @@
 import io
-import re
 import calendar
-from datetime import datetime as dt
-
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -14,40 +11,66 @@ st.title("🧾 Agency Claim Table Generator")
 
 st.markdown("""
 **Eligibility rules**
-- Joined **before 1 Jan 2026** → claim for **3 months**
-- Joined **on/after 1 Jan 2026** → **wait 1 calendar month**, then claim for **3 months − 1 day**
+
+• Joined **before 1 Jan 2026** → claim immediately for **3 months**  
+• Joined **on/after 1 Jan 2026** → **wait 1 calendar month**, then claim for **3 months − 1 day**
 """)
 
 
 # ───────────────────────── Sidebar ─────────────────────────
 with st.sidebar:
     st.header("Settings")
-    hours_per_day = st.number_input("Hours considered 1 workday", 1.0, 24.0, 8.0)
-    grace_minutes = st.number_input("Grace window (minutes)", 0, 120, 15)
-    day_rate = st.number_input("Rate per claim day (RM)", 0.0, 1000.0, 3.0)
-    day_first = st.checkbox("Dates are DD/MM/YYYY", value=True)
+
+    hours_per_day = st.number_input(
+        "Hours considered 1 workday", 1.0, 24.0, 8.0
+    )
+
+    grace_minutes = st.number_input(
+        "Grace window (minutes)", 0, 120, 15
+    )
+
+    day_rate = st.number_input(
+        "Rate per claim day (RM)", 0.0, 1000.0, 3.0
+    )
+
+    day_first = st.checkbox(
+        "Dates are DD/MM/YYYY",
+        value=True
+    )
 
 effective_threshold = hours_per_day - grace_minutes / 60
 
 
 # ───────────────────────── Upload ─────────────────────────
-att_file = st.file_uploader("Upload Timecard", type=["csv", "xlsx", "xls"])
-mst_file = st.file_uploader("Upload Masterlist", type=["xlsx", "xls"])
+att_file = st.file_uploader(
+    "Upload Timecard",
+    type=["csv", "xlsx", "xls"]
+)
+
+mst_file = st.file_uploader(
+    "Upload Masterlist",
+    type=["xlsx", "xls"]
+)
 
 
 # ───────────────────────── Helpers ─────────────────────────
 def parse_time(val):
+
     if pd.isna(val):
         return np.nan
+
     s = str(val).strip()
+
     if s == "":
         return np.nan
+
     try:
         t = pd.to_datetime(s, errors="coerce")
         if pd.notna(t):
             return t.hour + t.minute / 60
     except:
         pass
+
     try:
         return float(s)
     except:
@@ -55,21 +78,28 @@ def parse_time(val):
 
 
 def calc_hours(t_in, t_out):
+
     if pd.isna(t_in) or pd.isna(t_out):
         return 0.0
+
     dur = t_out - t_in
+
     if dur < 0:
         dur += 24
+
     return min(max(dur, 0), 24)
 
 
 # ───────────────────────── Main ─────────────────────────
 if att_file and mst_file:
+
     try:
+
         att = pd.read_excel(att_file) if not att_file.name.endswith(".csv") else pd.read_csv(att_file)
         mst = pd.read_excel(mst_file)
 
         st.subheader("1️⃣ Map Timecard Columns")
+
         t_emp = st.selectbox("Emp No", att.columns)
         t_name = st.selectbox("Name", att.columns)
         t_date = st.selectbox("Date", att.columns)
@@ -77,47 +107,62 @@ if att_file and mst_file:
         t_out = st.selectbox("Time Out", att.columns)
 
         st.subheader("2️⃣ Map Masterlist Columns")
+
         m_name = st.selectbox("Master Name", mst.columns)
         m_join = st.selectbox("Joined Date", mst.columns)
         m_recr = st.selectbox("Recruiter", ["(none)"] + mst.columns.tolist())
 
-        # Normalize
         att["__Date"] = pd.to_datetime(att[t_date], dayfirst=day_first, errors="coerce")
         att["__Name"] = att[t_name].astype(str).str.strip()
         att["__Emp"] = att[t_emp].astype(str).str.strip()
+
         att["__InH"] = att[t_in].apply(parse_time)
         att["__OutH"] = att[t_out].apply(parse_time)
-        att["__Hours"] = [calc_hours(i, o) for i, o in zip(att["__InH"], att["__OutH"])]
+
+        att["__Hours"] = [
+            calc_hours(i, o) for i, o in zip(att["__InH"], att["__OutH"])
+        ]
 
         mst[m_join] = pd.to_datetime(mst[m_join], errors="coerce")
 
         join_by_name = dict(zip(mst[m_name], mst[m_join]))
-        recr_by_name = dict(zip(mst[m_name], mst[m_recr])) if m_recr != "(none)" else {}
+
+        recr_by_name = (
+            dict(zip(mst[m_name], mst[m_recr]))
+            if m_recr != "(none)"
+            else {}
+        )
 
         att["JOIN_DATE"] = att["__Name"].map(join_by_name)
-        att["Recruiter"] = att["__Name"].map(recr_by_name).fillna("Unassigned")
 
-        # ───────── Policy (FIXED) ─────────
+        att["Recruiter"] = (
+            att["__Name"].map(recr_by_name)
+            .fillna("Unassigned")
+        )
+
         NEW_POLICY = pd.Timestamp("2026-01-01")
 
         def claim_window(j):
+
             if pd.isna(j):
                 return pd.NaT, pd.NaT
 
             if j >= NEW_POLICY:
-                # New joiners: wait 1 calendar month
                 claim_start = (j + pd.DateOffset(months=1)).normalize()
             else:
-                # Old joiners: immediate
                 claim_start = j.normalize()
 
-            # Claim window = 3 months - 1 day FROM CLAIM_START
-            eligible_end = (claim_start + pd.DateOffset(months=3) - pd.Timedelta(days=1)).normalize()
+            eligible_end = (
+                claim_start
+                + pd.DateOffset(months=3)
+                - pd.Timedelta(days=1)
+            ).normalize()
 
             return claim_start, eligible_end
 
-        att[["CLAIM_START", "ELIGIBLE_END"]] = att["JOIN_DATE"].apply(
-            lambda d: pd.Series(claim_window(d))
+        att[["CLAIM_START", "ELIGIBLE_END"]] = (
+            att["JOIN_DATE"]
+            .apply(lambda d: pd.Series(claim_window(d)))
         )
 
         eligible = att[
@@ -127,96 +172,212 @@ if att_file and mst_file:
         ]
 
         if eligible.empty:
+
             earliest = att["CLAIM_START"].min()
+
             st.warning(
                 f"⚠️ No eligible claims yet.\n\n"
                 f"Earliest claim date: **{earliest.strftime('%d %b %Y')}**"
             )
+
             st.stop()
 
-        # ───────── Daily aggregation ─────────
-        daily = eligible.groupby(
-            ["__Emp", "__Name", "Recruiter", "JOIN_DATE", "CLAIM_START", "ELIGIBLE_END", "__Date"],
-            as_index=False
-        ).agg(Total_Hours=("__Hours", "sum"))
+        daily = (
+            eligible.groupby(
+                [
+                    "__Emp",
+                    "__Name",
+                    "Recruiter",
+                    "JOIN_DATE",
+                    "CLAIM_START",
+                    "ELIGIBLE_END",
+                    "__Date"
+                ],
+                as_index=False
+            )
+            .agg(Total_Hours=("__Hours", "sum"))
+        )
 
-        daily["Worked_Day"] = (daily["Total_Hours"] >= effective_threshold).astype(int)
+        daily["Worked_Day"] = (
+            daily["Total_Hours"] >= effective_threshold
+        ).astype(int)
 
-        # ───────── Monthly tables ─────────
-        months = sorted(daily["__Date"].dt.to_period("M").unique())
+        months = sorted(
+            daily["__Date"].dt.to_period("M").unique()
+        )
+
         tables = {}
         summaries = {}
 
         for m in months:
-            month_df = daily[daily["__Date"].dt.to_period("M") == m]
+
+            month_df = daily[
+                daily["__Date"].dt.to_period("M") == m
+            ]
+
             days = calendar.monthrange(m.year, m.month)[1]
 
-            base = month_df.groupby(
-                ["__Emp", "__Name", "Recruiter", "JOIN_DATE", "CLAIM_START", "ELIGIBLE_END"],
-                as_index=False
-            )["Worked_Day"].sum().rename(columns={"Worked_Day": "TOTAL WORKING"})
+            base = (
+                month_df.groupby(
+                    [
+                        "__Emp",
+                        "__Name",
+                        "Recruiter",
+                        "JOIN_DATE",
+                        "CLAIM_START",
+                        "ELIGIBLE_END"
+                    ],
+                    as_index=False
+                )["Worked_Day"]
+                .sum()
+                .rename(columns={"Worked_Day": "Total Workdays"})
+            )
 
             for d in range(1, days + 1):
                 base[str(d)] = 0
 
             for _, r in month_df.iterrows():
-                mask = (base["__Emp"] == r["__Emp"]) & (base["__Name"] == r["__Name"])
-                base.loc[mask, str(r["__Date"].day)] = r["Worked_Day"]
+
+                mask = (
+                    (base["__Emp"] == r["__Emp"]) &
+                    (base["__Name"] == r["__Name"])
+                )
+
+                base.loc[
+                    mask,
+                    str(r["__Date"].day)
+                ] = r["Worked_Day"]
+
+            base = base.rename(columns={
+                "__Emp": "Emp No",
+                "__Name": "Emp Name",
+                "JOIN_DATE": "Join Date",
+                "CLAIM_START": "Claim Start",
+                "ELIGIBLE_END": "Eligible End"
+            })
+
+            day_cols = [str(d) for d in range(1, days + 1)]
+
+            ordered_cols = (
+                [
+                    "Emp No",
+                    "Emp Name",
+                    "Recruiter",
+                    "Join Date",
+                    "Claim Start",
+                    "Eligible End"
+                ]
+                + day_cols
+                + ["Total Workdays"]
+            )
+
+            base = base[ordered_cols]
 
             tables[str(m)] = base
 
-            summary = base.groupby("Recruiter", as_index=False)["TOTAL WORKING"].sum()
+            summary = (
+                base.groupby("Recruiter", as_index=False)
+                ["Total Workdays"]
+                .sum()
+            )
+
             summary["Rate (RM)"] = day_rate
-            summary["Amount (RM)"] = summary["TOTAL WORKING"] * day_rate
+            summary["Amount (RM)"] = summary["Total Workdays"] * day_rate
 
             grand = pd.DataFrame({
                 "Recruiter": ["TOTAL"],
-                "TOTAL WORKING": [summary["TOTAL WORKING"].sum()],
+                "Total Workdays": [summary["Total Workdays"].sum()],
                 "Rate (RM)": [day_rate],
                 "Amount (RM)": [summary["Amount (RM)"].sum()]
             })
 
             summaries[str(m)] = (summary, grand)
 
-        # ───────── Display ─────────
         for m in tables:
-            st.subheader(f"📅 {m}")
-            st.dataframe(tables[m], use_container_width=True)
-            st.caption("Per-Recruiter Summary")
-            st.dataframe(summaries[m][0], use_container_width=True)
-            st.write("Grand Total")
-            st.dataframe(summaries[m][1], use_container_width=True)
 
-        # ───────── Excel Export ─────────
+            st.subheader(f"📅 {m}")
+
+            st.dataframe(
+                tables[m],
+                use_container_width=True
+            )
+
+            st.caption("Per-Recruiter Summary")
+
+            st.dataframe(
+                summaries[m][0],
+                use_container_width=True
+            )
+
+            st.write("Grand Total")
+
+            st.dataframe(
+                summaries[m][1],
+                use_container_width=True
+            )
+
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+
+        with pd.ExcelWriter(
+            buffer,
+            engine="xlsxwriter"
+        ) as writer:
+
             for m in tables:
+
                 sheet = m[:31]
+
                 df_claim = tables[m]
                 df_summary, df_grand = summaries[m]
 
-                df_claim.to_excel(writer, sheet_name=sheet, index=False)
+                df_claim.to_excel(
+                    writer,
+                    sheet_name=sheet,
+                    index=False
+                )
+
                 ws = writer.sheets[sheet]
                 wb = writer.book
+
                 bold = wb.add_format({"bold": True})
 
+                for i, col in enumerate(df_claim.columns):
+                    ws.set_column(i, i, 15)
+
                 start = len(df_claim) + 2
+
                 ws.write(start, 0, "Per-Recruiter Summary", bold)
-                df_summary.to_excel(writer, sheet_name=sheet, startrow=start + 1, index=False)
+
+                df_summary.to_excel(
+                    writer,
+                    sheet_name=sheet,
+                    startrow=start + 1,
+                    index=False
+                )
 
                 start = start + len(df_summary) + 3
+
                 ws.write(start, 0, "Grand Total", bold)
-                df_grand.to_excel(writer, sheet_name=sheet, startrow=start + 1, index=False)
+
+                df_grand.to_excel(
+                    writer,
+                    sheet_name=sheet,
+                    startrow=start + 1,
+                    index=False
+                )
 
         st.download_button(
-            "⬇️ Download Excel (one sheet per month: table + summary + grand total)",
+            "⬇️ Download Excel (one sheet per month)",
             buffer.getvalue(),
             file_name="claim_output.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
     except Exception as e:
+
         st.error(f"Error: {e}")
         st.exception(e)
+
 else:
+
     st.info("Upload both files to continue.")
