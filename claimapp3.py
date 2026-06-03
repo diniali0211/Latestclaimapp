@@ -362,10 +362,26 @@ with tab_dexcom:
             daily[["_ps","_pe"]] = daily.apply(assign_period, axis=1)
             daily["_pk"] = daily["_ps"].astype(str)
 
+            # Only keep periods whose end date is covered by the file's data.
+            # If a period ends after the last date in the file, the data is incomplete
+            # (e.g. file has Dec 7–Jan 31 but ATnS period 2 ends Feb 6 → drop it).
+            max_date = att["_date"].max()
+            valid_pks = {
+                pk for pk in daily["_pk"].dropna().unique()
+                if daily.loc[daily["_pk"]==pk, "_pe"].iloc[0] <= max_date
+            }
+            skipped = set(daily["_pk"].dropna().unique()) - valid_pks
+            if skipped:
+                st.info(
+                    f"ℹ️ {len(skipped)} billing period(s) were skipped because the uploaded "
+                    f"timecard only covers up to **{max_date.strftime('%d %b %Y')}** and doesn't "
+                    f"reach the period end date. Upload a timecard that covers the full period to include it."
+                )
+
             tables    = {}
             summaries = {}
 
-            for pk in sorted(daily["_pk"].dropna().unique()):
+            for pk in sorted(valid_pks):
                 pdata = daily[daily["_pk"] == pk].copy()
                 ps, pe = pdata["_ps"].iloc[0], pdata["_pe"].iloc[0]
                 all_dates  = pd.date_range(ps, pe)
