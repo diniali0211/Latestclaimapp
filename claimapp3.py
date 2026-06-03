@@ -15,6 +15,7 @@ COMPANY_CUTOFFS = {
     "ybs":     (21, 20),
     "atns":    (7,  6),
     "sustio":  (16, 15),
+    "te":      (16, 15),
     "jabil":   (24, 23),
     "wd":      (1,  None),
     "shopee":  (1,  None),
@@ -22,7 +23,7 @@ COMPANY_CUTOFFS = {
 
 MANUAL_MAP = {
     "Auto-detect": None, "Dexcom": "dexcom", "Micron/ETI/YBS": "micron",
-    "ATnS": "atns", "Sustio": "sustio", "Jabil": "jabil", "WD/Shopee": "wd",
+    "ATnS": "atns", "Sustio": "sustio", "TE": "te", "Jabil": "jabil", "WD/Shopee": "wd",
 }
 
 # Sustio shift codes
@@ -33,9 +34,13 @@ SUSTIO_PRESENT = {
 }
 
 def detect_company(val):
+    import re
     if pd.isna(val): return None
     s = str(val).lower()
     for key in COMPANY_CUTOFFS:
+        # short keys (≤3 chars) must match as whole word to avoid false positives
+        if len(key) <= 3:
+            if not re.search(r"\b" + re.escape(key) + r"\b", s): continue
         if key in s: return key
     return None
 
@@ -248,6 +253,7 @@ with tab_dexcom:
             {"Company": "Micron / ETI / YBS","Billing Period": "21st → 20th"},
             {"Company": "ATnS",              "Billing Period": "7th → 6th"},
             {"Company": "Sustio",            "Billing Period": "16th → 15th"},
+            {"Company": "TE",               "Billing Period": "16th → 15th"},
             {"Company": "Jabil",             "Billing Period": "24th → 23rd"},
             {"Company": "WD / Shopee",       "Billing Period": "1st → end of month"},
         ]))
@@ -261,7 +267,7 @@ with tab_dexcom:
         st.divider()
         st.subheader("Company Cutoff Override")
         manual_company = st.selectbox("Force company cutoff",
-            ["Auto-detect","Dexcom","Micron/ETI/YBS","ATnS","Sustio","Jabil","WD/Shopee"], key="g_co")
+            ["Auto-detect","Dexcom","Micron/ETI/YBS","ATnS","Sustio","TE","Jabil","WD/Shopee"], key="g_co")
         forced_company = MANUAL_MAP[manual_company]
 
     effective_threshold = hours_per_day - grace_minutes / 60
