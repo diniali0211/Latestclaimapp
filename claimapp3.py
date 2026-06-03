@@ -2,7 +2,6 @@ import io, re, calendar, datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
-from difflib import SequenceMatcher
 
 
 # ═══════════════════════════════════════════════════════
@@ -451,7 +450,6 @@ with tab_sustio:
         st.markdown("---")
         st.header("🟢 Sustio Settings")
         day_rate_s  = st.number_input("Rate per claim day (RM)", 0.0, 1000.0, 3.0, key="s_rate")
-        fuzzy_thr   = st.slider("Fuzzy name match threshold", 0.70, 0.99, 0.90, 0.01, key="s_fuzzy")
         excl_unassigned = st.checkbox("Exclude Unassigned from Excel export", value=True, key="s_excl")
 
         st.markdown("**Select claim month (period ends on 15th):**")
@@ -554,32 +552,8 @@ with tab_sustio:
             att_s["JOIN_DATE"] = att_s["_emp"].map(jmap_e)
             att_s.loc[att_s["JOIN_DATE"].isna(),"JOIN_DATE"] = att_s.loc[att_s["JOIN_DATE"].isna(),"_name"].map(jmap_n)
 
-            # Fuzzy fallback
-            mst_names = list(mst_s["_name"].dropna().unique())
-            mst_join_by_name  = dict(zip(mst_s["_name"], mst_s["_join"]))
-            mst_recr_by_name  = dict(zip(mst_s["_name"], mst_s["_recr"]))
-
-            def fuzzy_match(name):
-                if not name: return None, None
-                best_r, best_k = 0.0, None
-                for mk in mst_names:
-                    r = SequenceMatcher(a=name, b=mk).ratio()
-                    if r > best_r: best_r, best_k = r, mk
-                if best_r >= fuzzy_thr and best_k:
-                    return mst_join_by_name.get(best_k), mst_recr_by_name.get(best_k)
-                return None, None
-
-            still_unmatched = att_s["JOIN_DATE"].isna()
-            if still_unmatched.any():
-                fuzz = att_s.loc[still_unmatched, "_name"].apply(fuzzy_match)
-                att_s.loc[still_unmatched,"JOIN_DATE"] = [f[0] for f in fuzz]
-                att_s.loc[still_unmatched,"_recr_fuzz"] = [f[1] for f in fuzz]
-            else:
-                att_s["_recr_fuzz"] = None
-
             att_s["Recruiter"] = att_s["_emp"].map(rmap_e)
             att_s.loc[att_s["Recruiter"].isna(),"Recruiter"] = att_s.loc[att_s["Recruiter"].isna(),"_name"].map(rmap_n)
-            att_s.loc[att_s["Recruiter"].isna(),"Recruiter"] = att_s.loc[att_s["Recruiter"].isna(),"_recr_fuzz"]
             att_s["Recruiter"] = att_s["Recruiter"].fillna("Unassigned")
 
             n_matched = att_s.dropna(subset=["JOIN_DATE"])["_emp"].nunique()
