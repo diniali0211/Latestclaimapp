@@ -49,11 +49,14 @@ def get_period(year, month, ck):
         last = calendar.monthrange(year, month)[1]
         return pd.Timestamp(year, month, 1), pd.Timestamp(year, month, last)
     start_day, end_day = COMPANY_CUTOFFS[ck]
+    # FIX: WD/Shopee (end_day=None) = 1st to last day of that exact month
+    if end_day is None:
+        last = calendar.monthrange(year, month)[1]
+        return pd.Timestamp(year, month, 1), pd.Timestamp(year, month, last)
     py = year if month > 1 else year - 1
     pm = month - 1 if month > 1 else 12
     ps = pd.Timestamp(py, pm, min(start_day, calendar.monthrange(py, pm)[1]))
-    pe = (pd.Timestamp(year, month, min(end_day, calendar.monthrange(year, month)[1]))
-          if end_day else pd.Timestamp(year, month, calendar.monthrange(year, month)[1]))
+    pe = pd.Timestamp(year, month, min(end_day, calendar.monthrange(year, month)[1]))
     return ps, pe
 
 def date_to_billing_period(d, ck):
@@ -61,7 +64,10 @@ def date_to_billing_period(d, ck):
     if ck is None or ck not in COMPANY_CUTOFFS:
         last = calendar.monthrange(d.year, d.month)[1]
         return pd.Timestamp(d.year, d.month, 1), pd.Timestamp(d.year, d.month, last)
-    start_day, _ = COMPANY_CUTOFFS[ck]
+    start_day, end_day = COMPANY_CUTOFFS[ck]
+    # FIX: WD/Shopee (end_day=None = whole-month rule) — period is the date's own month
+    if end_day is None:
+        return get_period(d.year, d.month, ck)
     nm, ny = (d.month+1, d.year) if d.day >= start_day and d.month < 12 else \
              (1, d.year+1) if d.day >= start_day else (d.month, d.year)
     return get_period(ny, nm, ck)
