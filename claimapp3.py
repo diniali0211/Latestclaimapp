@@ -66,10 +66,14 @@ def date_to_billing_period(d, ck):
              (1, d.year+1) if d.day >= start_day else (d.month, d.year)
     return get_period(ny, nm, ck)
 
-def claim_window(j):
+def claim_window(j, ck=None):
     if pd.isna(j): return pd.NaT, pd.NaT
     cs = pd.Timestamp(j).normalize()
     ee = (cs + pd.DateOffset(months=3) - pd.Timedelta(days=1)).normalize()
+    # FIX: WD/Shopee — snap eligible end to last day of that same month
+    if ck in ("wd", "shopee"):
+        last = calendar.monthrange(ee.year, ee.month)[1]
+        ee = pd.Timestamp(ee.year, ee.month, last)
     return cs, ee
 
 def fmt_date(ts):
@@ -348,8 +352,8 @@ with tab_dexcom:
                 att["Recruiter"] = "Unassigned"
             att["Recruiter"] = att["Recruiter"].fillna("Unassigned")
 
-            att[["CLAIM_START","ELIGIBLE_END"]] = att["JOIN_DATE"].apply(
-                lambda d: pd.Series(claim_window(d)))
+            att[["CLAIM_START","ELIGIBLE_END"]] = att[["JOIN_DATE","_ck"]].apply(
+                lambda row: pd.Series(claim_window(row["JOIN_DATE"], row["_ck"])), axis=1)
 
             # Daily aggregation
             daily = (
