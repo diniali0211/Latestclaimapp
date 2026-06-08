@@ -73,14 +73,18 @@ def date_to_billing_period(d, ck):
     return get_period(ny, nm, ck)
 
 def claim_window(j, ck=None):
-    if pd.isna(j): return pd.NaT, pd.NaT
+    if pd.isna(j): return pd.NaT, pd.NaT, pd.NaT
     cs = pd.Timestamp(j).normalize()
+    # ee = raw join+3m-1d date (displayed in Eligible End column)
     ee = (cs + pd.DateOffset(months=3) - pd.Timedelta(days=1)).normalize()
-    # FIX: WD/Shopee — snap eligible end to last day of that same month
+    # ee_grid = attendance boundary: for WD/Shopee snap to last day of same month,
+    # for all other companies ee_grid == ee (no change)
     if ck in ("wd", "shopee"):
         last = calendar.monthrange(ee.year, ee.month)[1]
-        ee = pd.Timestamp(ee.year, ee.month, last)
-    return cs, ee
+        ee_grid = pd.Timestamp(ee.year, ee.month, last)
+    else:
+        ee_grid = ee
+    return cs, ee, ee_grid
 
 def fmt_date(ts):
     try: return pd.Timestamp(ts).strftime("%d/%m/%Y")
@@ -358,19 +362,19 @@ with tab_dexcom:
                 att["Recruiter"] = "Unassigned"
             att["Recruiter"] = att["Recruiter"].fillna("Unassigned")
 
-            att[["CLAIM_START","ELIGIBLE_END"]] = att[["JOIN_DATE","_ck"]].apply(
+            att[["CLAIM_START","ELIGIBLE_END","ELIGIBLE_END_GRID"]] = att[["JOIN_DATE","_ck"]].apply(
                 lambda row: pd.Series(claim_window(row["JOIN_DATE"], row["_ck"])), axis=1)
 
             # Daily aggregation
             daily = (
                 att.groupby(["_emp","_name","Recruiter","_ck",
-                             "JOIN_DATE","CLAIM_START","ELIGIBLE_END","_date"], as_index=False)
+                             "JOIN_DATE","CLAIM_START","ELIGIBLE_END","ELIGIBLE_END_GRID","_date"], as_index=False)
                 .agg(hrs=("_hours","sum"))
             )
             daily["worked"] = np.where(
                 (daily["hrs"] >= effective_threshold) &
                 (daily["_date"] >= daily["CLAIM_START"]) &
-                (daily["_date"] <= daily["ELIGIBLE_END"]), 1, 0)
+                (daily["_date"] <= daily["ELIGIBLE_END_GRID"]), 1, 0)
 
             def assign_period(row):
                 ps, pe = date_to_billing_period(row["_date"], row["_ck"])
@@ -394,7 +398,7 @@ with tab_dexcom:
                 date_to_col = {d.normalize(): d.strftime("%-d/%-m") for d in all_dates}
 
                 base = (
-                    pdata.groupby(["_emp","_name","Recruiter","JOIN_DATE","CLAIM_START","ELIGIBLE_END"],
+                    pdata.groupby(["_emp","_name","Recruiter","JOIN_DATE","CLAIM_START","ELIGIBLE_END","ELIGIBLE_END_GRID"],
                                   as_index=False)["worked"].sum()
                     .rename(columns={"worked":"Total Workdays"})
                 ).reset_index(drop=True)
