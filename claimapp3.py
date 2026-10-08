@@ -19,11 +19,13 @@ COMPANY_CUTOFFS = {
     "jabil":   (24, 23),
     "wd":      (1,  None),
     "shopee":  (1,  None),
+    "novolyte": (1,  None),
 }
 
 MANUAL_MAP = {
     "Auto-detect": None, "Dexcom": "dexcom", "Micron/ETI/YBS": "micron",
     "ATnS": "atns", "Sustio": "sustio", "TE": "te", "Jabil": "jabil", "WD/Shopee": "wd",
+    "Novolyte": "novolyte",
 }
 
 # Sustio shift codes
@@ -262,6 +264,7 @@ with tab_dexcom:
             {"Company": "TE",               "Billing Period": "16th → 15th"},
             {"Company": "Jabil",             "Billing Period": "24th → 23rd"},
             {"Company": "WD / Shopee",       "Billing Period": "1st → end of month"},
+            {"Company": "Novolyte",          "Billing Period": "1st → end of month"},
         ]))
 
     with st.sidebar:
@@ -273,7 +276,7 @@ with tab_dexcom:
         st.divider()
         st.subheader("Company Cutoff Override")
         manual_company = st.selectbox("Force company cutoff",
-            ["Auto-detect","Dexcom","Micron/ETI/YBS","ATnS","Sustio","TE","Jabil","WD/Shopee"], key="g_co")
+            ["Auto-detect","Dexcom","Micron/ETI/YBS","ATnS","Sustio","TE","Jabil","WD/Shopee","Novolyte"], key="g_co")
         forced_company = MANUAL_MAP[manual_company]
 
     effective_threshold = hours_per_day - grace_minutes / 60
