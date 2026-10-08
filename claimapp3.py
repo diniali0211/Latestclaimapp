@@ -19,13 +19,11 @@ COMPANY_CUTOFFS = {
     "jabil":   (24, 23),
     "wd":      (1,  None),
     "shopee":  (1,  None),
-    "novolyte": (1,  None),
 }
 
 MANUAL_MAP = {
     "Auto-detect": None, "Dexcom": "dexcom", "Micron/ETI/YBS": "micron",
     "ATnS": "atns", "Sustio": "sustio", "TE": "te", "Jabil": "jabil", "WD/Shopee": "wd",
-    "Novolyte": "novolyte",
 }
 
 # Sustio shift codes
@@ -264,7 +262,6 @@ with tab_dexcom:
             {"Company": "TE",               "Billing Period": "16th → 15th"},
             {"Company": "Jabil",             "Billing Period": "24th → 23rd"},
             {"Company": "WD / Shopee",       "Billing Period": "1st → end of month"},
-            {"Company": "Novolyte",          "Billing Period": "1st → end of month"},
         ]))
 
     with st.sidebar:
@@ -276,7 +273,7 @@ with tab_dexcom:
         st.divider()
         st.subheader("Company Cutoff Override")
         manual_company = st.selectbox("Force company cutoff",
-            ["Auto-detect","Dexcom","Micron/ETI/YBS","ATnS","Sustio","TE","Jabil","WD/Shopee","Novolyte"], key="g_co")
+            ["Auto-detect","Dexcom","Micron/ETI/YBS","ATnS","Sustio","TE","Jabil","WD/Shopee"], key="g_co")
         forced_company = MANUAL_MAP[manual_company]
 
     effective_threshold = hours_per_day - grace_minutes / 60
@@ -469,6 +466,7 @@ with tab_sustio:
     with st.sidebar:
         st.markdown("---")
         st.header("🟢 Sustio Settings")
+        sel_co_s    = st.selectbox("Company", ["Sustio", "Novolyte"], key="s_co")
         day_rate_s  = st.number_input("Rate per claim day (RM)", 0.0, 1000.0, 3.0, key="s_rate")
         excl_unassigned = st.checkbox("Exclude Unassigned from Excel export", value=True, key="s_excl")
 
@@ -486,7 +484,10 @@ with tab_sustio:
     prev_y = cycle_end_ts.year if cycle_end_ts.month > 1 else cycle_end_ts.year - 1
     sustio_ps = pd.Timestamp(prev_y, prev_m, 16)
     sustio_pe = pd.Timestamp(cycle_end_ts.year, cycle_end_ts.month, 15)
-    st.info(f"Sustio claim window: **{sustio_ps.strftime('%d %b %Y')} → {sustio_pe.strftime('%d %b %Y')}**")
+    if sel_co_s == "Novolyte":  # Novolyte cutoff: 1st → last day of selected month
+        sustio_ps = pd.Timestamp(sel_year, sel_month_num, 1)
+        sustio_pe = pd.Timestamp(sel_year, sel_month_num, calendar.monthrange(sel_year, sel_month_num)[1])
+    st.info(f"{sel_co_s} claim window: **{sustio_ps.strftime('%d %b %Y')} → {sustio_pe.strftime('%d %b %Y')}**")
 
     att_file_s = st.file_uploader("Upload Sustio Attendance (xlsx/xls)", type=["xlsx","xls"], key="s_att")
     mst_file_s = st.file_uploader("Upload Sustio Masterlist (xlsx/xls)", type=["xlsx","xls"], key="s_mst")
@@ -535,6 +536,9 @@ with tab_sustio:
             prev_month_days = sorted([c for c in raw_day_cols if int(str(c)) >= 16], key=lambda x: int(str(x)))
             curr_month_days = sorted([c for c in raw_day_cols if int(str(c)) <= 15],  key=lambda x: int(str(x)))
             ordered_day_cols = prev_month_days + curr_month_days  # 16..31, 1..15
+            if sel_co_s == "Novolyte":  # 1..last day of month
+                ordered_day_cols = sorted([c for c in raw_day_cols if int(str(c)) <= sustio_pe.day],
+                                          key=lambda x: int(str(x)))
 
             # Drop fully empty rows
             att_s = att_s.dropna(subset=["NAME"]).reset_index(drop=True)
@@ -603,6 +607,8 @@ with tab_sustio:
             # ── Build col labels (DD/MM) and cap by claim window ──
             def day_to_date(day_num):
                 d = int(str(day_num))
+                if sel_co_s == "Novolyte":
+                    return pd.Timestamp(sustio_ps.year, sustio_ps.month, d)
                 if d >= 16:
                     return pd.Timestamp(sustio_ps.year, sustio_ps.month, d)
                 else:
