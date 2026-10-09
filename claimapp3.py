@@ -564,7 +564,7 @@ with tab_sustio:
 
             mst_s["_emp"]  = mst_s[m_emp_s].apply(lambda s: str(s).strip().upper() if not pd.isna(s) else "")
             mst_s["_name"] = mst_s[m_name_s].apply(clean_str)
-            mst_s["_join"] = pd.to_datetime(mst_s[m_join_s], errors="coerce")
+            mst_s["_join"] = pd.to_datetime(mst_s[m_join_s], errors="coerce", dayfirst=True)
             mst_s["_recr"] = mst_s[m_recr_s].apply(clean_str) if m_recr_s != "(none)" else "Unassigned"
 
             # ── Match attendance → masterlist ──
